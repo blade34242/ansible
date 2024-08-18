@@ -1,0 +1,15 @@
+---
+- name: Run Nginx container for backend
+  docker_container:
+    name: "{{ backend_container_name }}"
+    image: "{{ backend_image }}"
+    restart_policy: unless-stopped
+    volumes:
+      "{{ backend_volumes }}"
+    networks:
+      - name: "{{ network_name }}"
+      - name: "{{ graylog_network_name }}"
+    purge_networks: yes
+    networks_cli_compatible: yes
+    state: started
+

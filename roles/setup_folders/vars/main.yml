@@ -1,0 +1,25 @@
+---
+# Variablen für die Verzeichniserstellung
+wp_container_name: "wptest1234"
+backend_container_name: "backend-{{ wp_container_name }}"
+
+backend_app_base_path: "/home/blade34242/apps"
+backend_app_owner: "blade34242"
+backend_app_group: "blade34242"
+backend_app_permissions: "0755"
+
+backend_log_base_path: "/var/logs"
+backend_log_folder_name: "{{ wp_container_name }}"
+backend_log_owner: "root"
+backend_log_group: "adm"
+backend_log_permissions: "0750"
+
+test_log_base_path: "/var/logs"
+test_log_folder_name: "{{ backend_container_name }}"
+test_log_owner: "root"
+test_log_group: "adm"
+test_log_permissions: "0750"
+
+backend_app_subfolders:
+  - name: "php-fpm-d"
+

@@ -1,0 +1,16 @@
+- name: Run WordPress container
+  docker_container:
+    name: "{{ wp_container_name }}"
+    image: "{{ wp_image }}"
+    restart_policy: unless-stopped
+    env:
+      "{{ wordpress_env_vars }}"
+    volumes:
+      "{{ wp_volumes }}"
+    networks:
+      - name: "{{ network_name }}"
+      - name: "{{ graylog_network_name }}"  # Externes Netzwerk
+    purge_networks: yes
+    networks_cli_compatible: yes
+    state: started
+

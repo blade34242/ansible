@@ -1,0 +1,47 @@
+---
+- name: Create backend application folder
+  file:
+    path: "{{ backend_app_base_path }}/{{ backend_container_name }}"
+    state: directory
+    owner: "{{ backend_app_owner }}"
+    group: "{{ backend_app_group }}"
+    mode: "{{ backend_app_permissions }}"
+
+- name: Create backend log folder
+  file:
+    path: "{{ backend_log_base_path }}/{{ backend_log_folder_name }}"
+    state: directory
+    owner: "{{ backend_log_owner }}"
+    group: "{{ backend_log_group }}"
+    mode: "{{ backend_log_permissions }}"
+
+- name: Create test log folder
+  file:
+    path: "{{ test_log_base_path }}/{{ test_log_folder_name }}"
+    state: directory
+    owner: "{{ test_log_owner }}"
+    group: "{{ test_log_group }}"
+    mode: "{{ test_log_permissions }}"
+
+- name: Create subfolders inside the backend application folder
+  file:
+    path: "{{ backend_app_base_path }}/{{ backend_container_name }}/{{ item.name }}"
+    state: directory
+    owner: "{{ backend_app_owner }}"
+    group: "{{ backend_app_group }}"
+    mode: "{{ backend_app_permissions }}"
+  loop: "{{ backend_app_subfolders }}"
+
+- name: Copy config files from the configs/ folder to the backend container folder
+  copy:
+    src: "files/{{ item.src }}"
+    dest: "{{ backend_app_base_path }}/{{ backend_container_name }}/{{ item.dest }}"
+    owner: "{{ backend_app_owner }}"
+    group: "{{ backend_app_group }}"
+    mode: '0644'
+  loop:
+    - { src: "www.conf", dest: "php-fpm-d/www.conf" }
+    - { src: "custom-php.ini", dest: "custom-php.ini" }
+    - { src: "harden-wordpress.conf", dest: "harden-wordpress.conf" }
+
+

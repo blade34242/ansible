@@ -1,0 +1,65 @@
+---
+- name: Deploy Docker Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ docker_compose_file }}"
+
+- name: Pause to allow container to start
+  ansible.builtin.pause:
+    seconds: 10
+
+- name: Check if container is running
+  community.docker.docker_container_info:
+    name: "{{ docker_container_name }}"
+  register: container_info
+  failed_when: false  # Avoid failing if the container does not exist
+
+# Debug the entire container_info structure
+- name: Debug container_info variable
+  ansible.builtin.debug:
+    var: container_info
+
+# Deploy the container if it does not exist
+- name: Deploy container if it does not exist
+  ansible.builtin.command:
+    cmd: docker-compose -f "{{ docker_compose_file }}" up -d
+    chdir: "{{ docker_base_dir }}"
+  when: container_info.container is none  # Deploy if the container doesn't exist
+
+# Start the container if it exists but is not running
+- name: Start container if it exists but is not running
+  ansible.builtin.command:
+    cmd: docker-compose -f "{{ docker_compose_file }}" start
+    chdir: "{{ docker_base_dir }}"
+  when: container_info.container is not none and not container_info.container.State.Running
+
+# Restart the container if it is already running
+- name: Restart container if it is already running
+  ansible.builtin.command:
+    cmd: docker-compose -f "{{ docker_compose_file }}" restart
+    chdir: "{{ docker_base_dir }}"
+  when: container_info.container is not none and container_info.container.State.Running
+
+- name: Get container IP address
+  shell: "docker inspect -f '{{ '{{ .NetworkSettings.Networks.graylog_graylog_network.IPAddress }}' }}' {{ docker_container_name }}"
+  register: container_ip
+  failed_when: container_ip.stdout is not defined
+  when: container_info.container is not none and container_info.container.State.Running
+
+- name: Debug container IP address
+  ansible.builtin.debug:
+    msg: "Container IP is {{ container_ip.stdout }}"
+  when: container_ip.stdout is defined and container_ip.stdout != ""
+
+- name: Allow UFW route 4500/udp traffic with a comment including date
+  ansible.builtin.command: >
+    ufw route allow proto udp from {{ allowed_ip }} to {{ container_ip.stdout }} port 4500 comment '## AUTO Allow 4500 Traffic From IPHOME TO fritzbox-ipsec-vpn-container on {{ ansible_date_time.date }}'
+  notify: restart_ufw
+  when: container_ip.stdout is defined and container_ip.stdout != ""
+
+- name: Allow UFW route 500/udp traffic with a comment including date
+  ansible.builtin.command: >
+    ufw route allow proto udp from {{ allowed_ip }} to {{ container_ip.stdout }} port 500 comment '## AUTO Allow 500 Traffic From IPHOME TO fritzbox-ipsec-vpn-container on {{ ansible_date_time.date }}'
+  notify: restart_ufw
+  when: container_ip.stdout is defined and container_ip.stdout != ""
+

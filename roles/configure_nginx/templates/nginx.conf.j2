@@ -1,0 +1,198 @@
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+    sendfile        on;
+    keepalive_timeout 65;
+
+    fastcgi_cache_path /etc/nginx/cache levels=1:2 keys_zone=wpcache:200m max_size=10g inactive=2h use_temp_path=off;
+    fastcgi_cache_key "$scheme$request_method$host$request_uri";
+    fastcgi_ignore_headers Cache-Control Expires Set-Cookie;
+
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+	map $status $logok {
+            ~^[123]  1;
+            default 0;
+        }
+
+        map $status $log4xx {
+            ~^[4]  1;
+            default 0;
+        }
+
+        map $status $log5xx {
+            ~^[5]  1;
+            default 0;
+        }
+
+
+	access_log /static_log/access.2xx.log main if=$logok;
+        access_log /static_log/access.4xx.log main if=$log4xx;
+        access_log /static_log/access.5xx.log main if=$log5xx;
+        access_log /var/log/nginx/access.log main;
+
+        error_log /static_log/error.log warn;
+        error_log /var/log/nginx/error.log notice;
+
+	               log_format graylog_json escape=json '{ "timestamp": "$time_iso8601", '
+                     '"remote_addr": "$remote_addr", '
+                     '"body_bytes_sent": $body_bytes_sent, '
+                     '"request_time": $request_time, '
+                     '"response_status": $status, '
+                     '"request": "$request", '
+                     '"request_method": "$request_method", '
+                     '"host": "$host",'
+                     '"upstream_cache_status": "$upstream_cache_status",'
+                     '"upstream_addr": "$upstream_addr",'
+                     '"http_x_forwarded_for": "$http_x_forwarded_for",'
+                     '"http_referrer": "$http_referer", '
+                     '"http_user_agent": "$http_user_agent" }';
+
+    access_log syslog:server=graylog:1521 graylog_json;
+    error_log syslog:server=graylog:1522;
+
+
+    upstream php-handler {
+        server {{ wp_container_name }}:9000;
+    }
+
+    server {
+        listen 80;
+        server_name backend-wpprd;
+        root /var/www/html;
+        #include /etc/nginx/harden-wordpress.conf;
+        index index.php index.html;
+
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer-when-downgrade" always;
+        add_header Content-Security-Policy "default-src * data: 'unsafe-eval' 'unsafe-inline'" always;
+
+    #add_header X-Frame-Options "SAMEORIGIN" always;
+    #add_header X-XSS-Protection "1; mode=block" always;
+    #add_header X-Content-Type-Options "nosniff" always;
+    #add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    #add_header Content-Security-Policy "default-src 'self'; script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'; frame-ancestors 'self';" always;
+
+        # Remove X-Powered-By, which is an information leak
+        fastcgi_hide_header X-Powered-By;
+
+        # Set max upload size and increase upload timeout:
+        client_max_body_size 512M;
+        client_body_timeout 300s;
+        fastcgi_buffers 64 4K;
+
+        # Enable gzip but do not remove ETag headers
+        gzip on;
+        gzip_vary on;
+        gzip_comp_level 6;
+        gzip_min_length 256;
+	gzip_proxied any;
+    	gzip_buffers 16 8k;
+	gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+        #gzip_proxied expired no-cache no-store private no_last_modified no_etag auth;
+       # gzip_types application/atom+xml text/javascript application/javascript application/json application/ld+json application/manifest+json application/rss+xml application/vnd.geo+json application/vnd.ms-fontobject application/wasm application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/bmp image/svg+xml image/x-icon text/cache-manifest text/css text/plain text/vcard text/vnd.rim.location.xloc text/vtt text/x-component text/x-cross-domain-policy;
+
+        # Pagespeed is not supported by Nextcloud, so if your server is built
+        # with the `ngx_pagespeed` module, uncomment this line to disable it.
+        # pagespeed off;
+
+        # The settings allows you to optimize the HTTP2 bandwidth.
+        # See https://blog.cloudflare.com/delivering-http-2-upload-speed-improvements/
+        # for tuning hints
+        client_body_buffer_size 512k;
+
+        # Prevent nginx HTTP Server Detection
+        server_tokens off;
+
+	set $skip_cache 0;
+        if ($request_method = POST) {
+                set $skip_cache 1;
+        }
+        if ($query_string != "") {
+                set $skip_cache 1;
+        }
+
+        if ($request_uri ~* "/wp-admin/|/xmlrpc.php|wp-.*.php|^/feed/*|/tag/.*/feed/*|index.php|/.*sitemap.*\.(xml|xsl)") {
+                set $skip_cache 1;
+        }
+        if ($http_cookie ~* "comment_author|wordpress_[a-f0-9]+|wp-postpass|wordpress_no_cache|wordpress_logged_in") {
+        set $skip_cache 1;
+        }
+
+    # Specific location block for wp-content/uploads/astra-addon/
+    location /wp-content/uploads/astra-addon/ {
+        try_files $uri $uri/ =404;
+	types { application/javascript js; }
+    }
+
+    # Specific location block for /wp-content/uploads/uag-plugin/assets/
+    location /wp-content/uploads/uag-plugin/assets/ {
+        try_files $uri $uri/ =405;
+    }
+
+
+#        location / {
+#            try_files $uri $uri/ =404;
+#        }
+
+    # Add directives to handle permalinks
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+location ~ \.php(?:$|/) {	
+#        location ~ \.php$ {
+          #  fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+          #  include fastcgi_params;
+          #  fastcgi_pass php-handler;
+
+	    try_files $uri =404;
+#                fastcgi_split_path_info ^(.+\.php)(/.+)$;
+#                #add_header X-FastCGI-Cache $upstream_cache_status;
+                fastcgi_pass php-handler;
+                fastcgi_index index.php;
+                include fastcgi_params;
+                fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                fastcgi_param PATH_INFO $fastcgi_path_info;
+
+        }
+
+        location ~ /\.ht {
+            deny all;
+        }
+
+        location ~* \.(css|gif|ico|js)$ {
+            expires max;
+            log_not_found off;
+        }
+
+        location ~* ^/?wp-content/.*\.(png|jpe?g)$ {
+            add_header Vary Accept;
+            expires 365d;
+            if ($http_accept !~* "webp") {
+                break;
+            }
+            try_files
+                /wp-content/webp-express/webp-images/doc-root/$uri.webp
+                $uri.webp
+                /wp-content/plugins/webp-express/wod/webp-on-demand.php?xsource=x$request_filename&wp-content=wp-content;
+        }
+
+        location ~* ^/?wp-content/.*\.(png|jpe?g)\.webp$ {
+            try_files
+                $uri
+                /wp-content/plugins/webp-express/wod/webp-realizer.php?xdestination=x$request_filename&wp-content=wp-content;
+        }
+
+    }
+}
+

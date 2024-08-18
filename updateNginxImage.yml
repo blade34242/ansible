@@ -1,0 +1,26 @@
+---
+- hosts: localhost
+  vars:
+    nginx_services:
+      - backend-wpprd
+      - backend-wpdev
+
+  tasks:
+    - name: Pull the latest images for all NGINX services
+      ansible.builtin.command:
+        cmd: "docker-compose pull {{ item }}"
+      loop: "{{ nginx_services }}"
+      args:
+        chdir: "/home/blade34242/apps/"
+
+    - name: Recreate all NGINX containers with the latest images while preserving configuration
+      ansible.builtin.command:
+        cmd: "docker-compose up -d --force-recreate {{ item }}"
+      loop: "{{ nginx_services }}"
+      args:
+        chdir: "/home/blade34242/apps/"
+
+    - name: Display message that all NGINX containers have been updated
+      debug:
+        msg: "All NGINX containers have been updated with the latest images and configurations have been preserved."
+

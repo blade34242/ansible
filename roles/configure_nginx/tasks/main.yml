@@ -1,0 +1,12 @@
+- name: Debug the wp_container_name variable
+  debug:
+    msg: "The wp_container_name is {{ wp_container_name }}"
+
+- name: Deploy nginx.conf template with dynamic wp_container_name
+  template:
+    src: "nginx.conf.j2"
+    dest: "{{ backend_app_base_path }}/{{ backend_container_name }}/nginx.conf"
+    owner: "{{ backend_app_owner }}"
+    group: "{{ backend_app_group }}"
+    mode: '0644'
+

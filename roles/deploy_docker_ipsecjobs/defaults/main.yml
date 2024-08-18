@@ -1,0 +1,9 @@
+---
+docker_container_name: ipsecjobs
+docker_base_dir: "/home/blade34242/apps/ipsecjobs"
+docker_compose_file: "{{ docker_base_dir }}/docker-compose.yml"
+docker_env:
+  TZ: Europe/Zurich
+allowed_ip: "144.2.101.158"
+docker_command: /usr/local/bin/start.sh
+

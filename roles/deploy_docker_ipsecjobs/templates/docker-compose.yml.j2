@@ -1,0 +1,27 @@
+services:
+  {{ docker_container_name }}:
+    build: .
+    container_name: {{ docker_container_name }}
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    privileged: true
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - {{ docker_base_dir }}/backups/backupsDone:/backupsDone
+      - /root/apps/backups:/backupsToDo:ro
+      - {{ docker_base_dir }}/fritzbox.conf:/etc/vpnc/fritzbox.conf
+      - {{ docker_base_dir }}/crontab:/etc/cron.d/backup-cron
+      - {{ docker_base_dir }}/ssh_keys:/root/.ssh
+      - /var/log/ipsecjobs:/var/log
+    environment:
+      - TZ={{ docker_env.TZ }}
+    command: {{ docker_command }}
+    networks:
+      - graylog_graylog_network
+
+networks:
+  graylog_graylog_network:
+    external: true
+

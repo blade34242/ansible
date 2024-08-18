@@ -1,0 +1,54 @@
+---
+- name: Deploy WordPress Application with Docker
+  hosts: localhost
+  become: yes
+
+  vars_files:
+    - secrets.yml
+    - db_vars.yml
+
+  vars:
+    wp_container_name: "wptest1234"
+    backend_container_name: "backend-{{ wp_container_name }}"
+    network_name: "my_production_network"  # Neuer Name des Netzwerks
+    wp_image: "wordpress:fpm-alpine"
+    backend_image: "nginx:alpine"
+    graylog_network_name: "graylog_graylog_network"
+
+    # Environment variables for WordPress container
+    wordpress_env_vars:
+      TZ: "Europe/Berlin"
+      WORDPRESS_DB_HOST: "{{ db_host }}"
+      WORDPRESS_DB_NAME: "{{ db_name }}"
+      WORDPRESS_DB_USER: "{{ db_user }}"
+      WORDPRESS_DB_PASSWORD: "{{ db_password }}"  # Aus der verschlüsselten secrets.yml-Datei
+      WP_MAX_MEMORY_LIMIT: "512M"
+      WP_MEMORY_LIMIT: "512M"
+      WP_REDIS_HOST: "redis"
+      WP_REDIS_PORT: "6379"
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_HOME', 'https://privsec.ch');
+        define('WP_SITEURL', 'https://privsec.ch');
+        define('DISABLE_WP_CRON', true);
+        define('WP_REDIS_HOST', 'redis');
+        define('WP_REDIS_PORT', 6379);
+    wp_volumes:
+      - "{{ backend_app_base_path }}/{{ wp_container_name }}:/var/www/html"
+      - "{{ backend_app_base_path }}/{{ backend_container_name }}/custom-php.ini:/usr/local/etc/php/conf.d/custom-php.ini"
+      - "/var/log/{{ wp_container_name }}:/var/log"
+      - "/etc/localtime:/etc/localtime:ro"
+    # Volumes for Backend (Nginx) container
+    backend_volumes:
+      - "{{ backend_app_base_path }}/{{ backend_container_name }}/nginx.conf:/etc/nginx/nginx.conf:ro"
+      - "{{ backend_app_base_path }}/{{ backend_container_name }}/php-fpm-d/www.conf:/usr/local/etc/php-fpm.d/www.conf:ro"
+      - "{{ backend_app_base_path }}/{{ backend_container_name }}/custom-php.ini:/usr/local/etc/php/conf.d/custom-php.ini:ro"
+      - "/var/log/{{ backend_container_name }}:/static_log:rw"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/etc/timezone:/etc/timezone:ro"
+  roles:
+    - setup_folders
+    - configure_nginx
+    - create_docker_network
+    - deploy_wordpress
+    - deploy_nginx
+
