@@ -1,0 +1,80 @@
+---
+- name: Get UFW rules and check for running containers
+  hosts: localhost
+  become: yes
+  tasks:
+
+    - name: Retrieve UFW rules in structured format
+      shell: ufw status numbered
+      register: ufw_raw_output
+
+    - name: Debug raw UFW output
+      debug:
+        var: ufw_raw_output.stdout_lines
+
+    - name: Parse UFW rules into structured data
+      set_fact:
+        ufw_rules: "{{ ufw_raw_output.stdout_lines | select('match', '^\\[.*\\]') | list }}"
+
+    - name: Debug parsed UFW rules
+      debug:
+        var: ufw_rules
+
+    - name: Extract IP addresses and rule IDs from UFW rules using regex
+      set_fact:
+        ufw_rule_data: "{{ ufw_rules | map('regex_search', '^\\[([0-9]+)\\].*?(\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b)') | select('defined') | list }}"
+
+    - name: Debug extracted rule data
+      debug:
+        var: ufw_rule_data
+
+    - name: Parse UFW rule data into IDs and IPs
+      set_fact:
+        parsed_ufw_rules: "{{ ufw_rule_data | map('join', ',') | list }}"
+
+    - name: Debug parsed UFW rule data (ID and IP)
+      debug:
+        var: parsed_ufw_rules
+
+    - name: Get Docker container details in JSON
+      shell: docker inspect $(docker ps -q)
+      register: docker_containers
+      changed_when: false
+
+    - name: Parse Docker container IPs
+      set_fact:
+        docker_ips: "{{ docker_containers.stdout | from_json | map(attribute='NetworkSettings.Networks') | map('dict2items') | flatten(levels=1) | map(attribute='value.IPAddress') | list }}"
+
+    - name: Debug Docker container IPs
+      debug:
+        var: docker_ips
+
+    - name: Check if a container is running for each UFW rule
+      set_fact:
+        check_results: >-
+          {% set results = [] %}
+          {% for rule in parsed_ufw_rules %}
+            {% set rule_parts = rule.split(',') %}
+            {% set rule_id = rule_parts[0] %}
+            {% set rule_ip = rule_parts[1] %}
+            {% set match_found = rule_ip in docker_ips %}
+            {% set result = {"rule_id": rule_id, "rule_ip": rule_ip, "match_found": match_found} %}
+            {% set results = results + [result] %}
+          {% endfor %}
+          {{ results }}
+
+    - name: Debug check_results after processing
+      debug:
+        var: check_results
+
+    - name: Display container status for each UFW rule with IDs
+      debug:
+        msg: >-
+          {% if check_results | length == 0 %}
+            No UFW rules matched Docker container IPs.
+          {% else %}
+            {% for result in check_results %}
+              - Rule ID {{ result.rule_id }}: IP {{ result.rule_ip }} found in Docker IPs: {{ result.match_found }}
+            {% endfor %}
+          {% endif %}
+

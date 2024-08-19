@@ -4,6 +4,6 @@
   roles:
     - role: deploy_docker_ipsecjobs
       vars:
-        docker_compose_dir: "/home/blade34242/apps/ipsecjobs"   # Directory where the docker-compose.yml will be placed
+        docker_compose_dir: "/home/blade34242/apps/ipsec-cron-SSH-FileTransfer"   # Directory where the docker-compose.yml will be placed
         allowed_ip: "144.2.101.158"                  # IP to allow via UFW
 

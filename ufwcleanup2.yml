@@ -1,0 +1,58 @@
+---
+- name: Get UFW rules and check for running containers
+  hosts: localhost
+  become: yes
+  tasks:
+
+    - name: Retrieve UFW rules in structured format
+      shell: ufw status numbered
+      register: ufw_raw_output
+
+    - name: Parse UFW rules into structured data
+      set_fact:
+        ufw_rules: "{{ ufw_raw_output.stdout_lines | select('match', '^\\[.*\\]') | list }}"
+    
+    - name: Extract IP addresses from UFW rules using regex
+      set_fact:
+        ufw_ips: "{{ ufw_rules | map('regex_search', '\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b') | select('defined') | list }}"
+
+    - name: Filter out None values from extracted IPs
+      set_fact:
+        filtered_ufw_ips: "{{ ufw_ips | select('string') | list }}"
+
+    - name: Debug parsed UFW rules and filtered IP addresses
+      debug:
+        msg:
+          - "Parsed UFW Rules: {{ ufw_rules }}"
+          - "Filtered UFW IPs: {{ filtered_ufw_ips }}"
+
+    - name: Get Docker container details in JSON
+      shell: docker inspect $(docker ps -q)
+      register: docker_containers
+      changed_when: false
+
+    - name: Parse Docker container IPs
+      set_fact:
+        docker_ips: "{{ docker_containers.stdout | from_json | map(attribute='NetworkSettings.Networks') | map('dict2items') | flatten(levels=1) | map(attribute='value.IPAddress') | list }}"
+
+    - name: Debug Docker container IPs
+      debug:
+        msg:
+          - "Docker IPs: {{ docker_ips }}"
+
+    - name: Check if a container is running for each UFW rule
+      set_fact:
+        check_results: >-
+          {% set results = [] %}
+          {% for ip in filtered_ufw_ips %}
+          {% set match_found = ip in docker_ips %}
+          {% set result = {'rule_ip': ip, 'match_found': match_found} %}
+          {% set results = results + [result] %}
+          - IP {{ ip }} found in Docker IPs: {{ match_found }}
+          {% endfor %}
+          {{ results }}
+
+    - name: Display container status for each UFW rule
+      debug:
+        var: check_results
+

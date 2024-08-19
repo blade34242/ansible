@@ -1,0 +1,8 @@
+- name: Retrieve UFW rules (raw output)
+  shell: "ufw status numbered"
+  register: ufw_raw_output
+
+- name: Debug raw UFW output
+  debug:
+    var: ufw_raw_output.stdout
+
